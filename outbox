@@ -1,0 +1,326 @@
+#!/usr/bin/env python3
+"""outbox: rewrite an AI-drafted text for other people in plain English, using Gemini.
+
+The draft comes from a file or stdin. The rewrite goes to stdout, so it can be
+pasted as is. The model's list of changes goes to stderr, so the sender can
+check that no fact moved before sending.
+
+  outbox draft.md                       for another engineer (default)
+  outbox --for polish draft.md          remove the Claude habits, change nothing else
+  outbox --for team draft.md            operational detail, no code
+  outbox --for manager draft.md         three to five sentences: outcome, impact, ask
+  outbox --for funder draft.md          measured report register
+  outbox --for participant draft.md     warm, simple, tells them what to do
+  outbox --for "Sam, who runs operations" draft.md
+                                        any phrase describes the reader instead
+  cat draft.md | outbox --voice me.md   match the register of your own samples
+  outbox --instruction "..." draft.md   one more rule for this call, repeatable
+
+Key: ~/.config/gemini/api-key (0600) or $GEMINI_API_KEY. Never on the command line.
+"""
+import argparse
+import json
+import os
+import re
+import sys
+import time
+import urllib.error
+import urllib.request
+
+API = "https://generativelanguage.googleapis.com/v1beta/models"
+KEYFILE = os.path.expanduser("~/.config/gemini/api-key")
+VOICEFILE = os.path.expanduser("~/.config/outbox/voice.md")
+# The alias Google hot-swaps to each new Flash release, previews included. The
+# usage line on stderr names the model that actually served the call, so a swap
+# shows on the run it first happens.
+DEFAULT_MODEL = "gemini-flash-latest"
+SEPARATOR = "--- changes ---"
+
+# The instructions are rules.md next to this script: the programasweights "Claudish to
+# English" spec (github.com/programasweights/claudish, specs/claudish-to-english.md)
+# with a handful of rules from other sources folded into its sections, and the output
+# format (the change list) as its last paragraph. Provenance and the list of edits to
+# the spec: README.md.
+RULES_FILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "rules.md")
+
+with open(RULES_FILE) as _f:
+    RULES = _f.read().rstrip()
+
+# nobuzz's colleague and manager modes (github.com/adnanakil/nobuzz, debuzz/SKILL.md),
+# both recast to open with the reader; the manager text drops its one-third length
+# target, since this reader wants the operational detail. The last two have no source
+# prompt: the funder register is a research-impact report's, the participant
+# register is a programme welcome email's.
+AUDIENCES = {
+    "polish": (
+        "The reader is whoever the draft was already written for. Do not change the "
+        "audience or the register beyond removing the habits the rules name. Do not "
+        "compress, summarize, or reorder: keep every paragraph, every sentence's "
+        "content, and the draft's structure, headings, and lists as they are, and "
+        "rewrite wording only. The result should be about as long as the draft, "
+        "shorter only by what removing filler removes."
+    ),
+    "engineer": (
+        "The reader is a colleague: write plain, direct English, as a competent "
+        "engineer explaining it to another engineer. Remove dramatic framing, "
+        "suspense-building, hype, and buzzy metaphors (e.g. 'load-bearing "
+        "assumption', 'here's the kicker', 'the most instructive part', 'this "
+        "changes everything'). Plain sentences, no reveals. Keep every technical "
+        "fact, number, file path, command, and code block exactly intact: only the "
+        "style changes, not the substance, and do not shorten beyond what removing "
+        "fluff removes."
+    ),
+    "team": (
+        "The reader is a technical-adjacent teammate who runs programs and "
+        "operations. Lead with what happened or what was found, why it matters, and "
+        "what happens next or what is needed from them. Keep every fact, number, "
+        "date, name and link; drop code blocks, file paths, and implementation "
+        "mechanics unless one is essential to the point. Say statistics and domain "
+        "shorthand in ordinary words: prefer \"the difference was too small to be "
+        "sure it is real\" over confidence intervals, p-values, or terms like "
+        "\"cleared the threshold\", while keeping the counts, costs, and percentages "
+        "themselves. Aim for roughly a third of the draft's length, and use headings "
+        "or lists only where the draft has them."
+    ),
+    "manager": (
+        "The reader is a manager or director. Write three to five sentences: the "
+        "outcome, the impact or risk in plain terms, and any decision or ask. Being "
+        "short never means being vague: name what was chosen or decided, keep the "
+        "numbers that define it, and keep any link the reader needs in order to "
+        "act. No code, no file paths, no implementation detail, no lists or "
+        "headings. Assume thirty seconds of attention."
+    ),
+    "funder": (
+        "The reader is a program officer at a funder who will quote this text. Plain "
+        "declarative sentences and measured claims: every number says what it counts "
+        "and over which population, uncertainty and the as-of date are stated once in "
+        "plain words, an association is reported as an association and a detection "
+        "count as a floor, null results and caveats stay in with a plain one-sentence "
+        "caveat each. No promotional language, no invented jargon, no process notes. "
+        "A sentence in the right register: \"62 of the 900 people surveyed (6.9%, 95% CI "
+        "[5.4, 8.6]) entered the field for the first time after taking part in the "
+        "programme.\""
+    ),
+    "participant": (
+        "The reader is a hackathon participant, often early in their career, often "
+        "reading English as a second language, often on a phone. Warm and professional, "
+        "addressed as you: first what this is and what they get, then what they need "
+        "to do, with any deadline and link. Short paragraphs, ordinary words, no "
+        "internal names or jargon, and keep the draft's greeting and sign-off. A "
+        "passage in the right register: \"You need to fill this out to be registered as "
+        "a participant. Without it, you'll only be listed as an observer and won't be "
+        "eligible for prizes or team matching. It takes 2 minutes.\""
+    ),
+}
+
+# What a described reader gets beside the description. The description opens the
+# audience block verbatim, so anything the caller said about the reader, the register
+# or the length sits under the precedence line; this tail supplies the defaults for
+# what the caller did not say, and they are polish's: keep the content and the
+# structure, change the register and the wording.
+DESCRIBED_READER = (
+    "Write in the register this audience expects, and say any shorthand it would not "
+    "know in ordinary words. Unless the description says otherwise, keep every "
+    "paragraph's content and the draft's structure, headings and lists as they are, "
+    "and shorten only by what removing filler removes."
+)
+
+
+def audience_arg(spec):
+    """argparse type for --for: an audience name, or a phrase describing the reader.
+    One unknown word is refused, since it is a misspelt name far more often than a
+    one-word reader; a reader is described in at least two."""
+    spec = spec.strip()
+    if spec in AUDIENCES or len(spec.split()) > 1:
+        return spec
+    raise argparse.ArgumentTypeError(
+        f"'{spec}' is not an audience name ({', '.join(AUDIENCES)}). To describe the "
+        "reader instead, write a phrase, in quotes: \"Sam, who runs operations\"")
+
+
+def audience_note(spec):
+    """The paragraph that opens the system prompt: a name's note, or the description
+    itself with the described-reader tail after it."""
+    if spec in AUDIENCES:
+        return AUDIENCES[spec]
+    return spec + ("" if spec.endswith((".", "!", "?")) else ".") + " " + DESCRIBED_READER
+
+
+def read_key():
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if key:
+        return key
+    try:
+        with open(KEYFILE) as f:
+            key = f.read().strip()
+    except FileNotFoundError:
+        sys.exit(f"outbox: no Gemini key at {KEYFILE} and GEMINI_API_KEY is unset")
+    if not key:
+        sys.exit(f"outbox: {KEYFILE} is empty")
+    return key
+
+
+# How a caller's per-call rules are introduced. Separate from the voice block on
+# purpose: --voice says "match this register", which makes any directive sent
+# through it prose to imitate rather than a rule to obey. A caller that knows
+# something about its own context (a field the text sits beside, a term the reader
+# will not have) needs the second thing, and had no way to say it.
+INSTRUCTION_PREFACE = (
+    "Additional rules for this call, from the tool that invoked outbox. Obey them; "
+    "they are rules, not text to rewrite, quote, or imitate. Where one conflicts "
+    "with a rule above, the rule here wins."
+)
+
+
+def build_system(audience, voice, instructions=None):
+    parts = [
+        "Audience for the text below (where this conflicts with a rule that follows, "
+        "this takes precedence): " + audience_note(audience),
+    ]
+    if voice:
+        parts.append(
+            "Samples of how the sender of this text writes follow. Match their "
+            "register and habits, and do not reuse their sentences.\n\n" + voice.strip()
+        )
+    parts.append(RULES)
+    # Appended last and only when asked for, so a call that passes none builds the
+    # exact string it built before this existed: outbox is shared, and the skill's
+    # outward-draft use must not shift under a change made for one caller.
+    given = [i.strip() for i in (instructions or []) if i and i.strip()]
+    if given:
+        parts.append(INSTRUCTION_PREFACE + "\n\n"
+                     + "\n".join("- " + i for i in given))
+    return "\n\n".join(parts)
+
+
+def request_body(system, draft, temperature, thinking="low"):
+    return {
+        "systemInstruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": "Input:\n\n" + draft}]}],
+        "generationConfig": {
+            "temperature": temperature,
+            "thinkingConfig": {"thinkingLevel": thinking},
+        },
+    }
+
+
+def call(model, body, key, timeout, urlopen=None):
+    urlopen = urlopen or urllib.request.urlopen
+    req = urllib.request.Request(
+        f"{API}/{model}:generateContent",
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "x-goog-api-key": key},
+    )
+    for attempt in range(4):
+        try:
+            with urlopen(req, timeout=timeout) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode(errors="replace")[:400]
+            if e.code in (429, 500, 502, 503, 504) and attempt < 3:
+                ra = e.headers.get("Retry-After", "") if e.headers else ""
+                time.sleep(float(ra) if ra.replace(".", "", 1).isdigit() else 2 ** attempt)
+                continue
+            sys.exit(f"outbox: HTTP {e.code} from Gemini: {detail}")
+        except urllib.error.URLError as e:
+            if attempt < 3:
+                time.sleep(2 ** attempt)
+                continue
+            sys.exit(f"outbox: network error: {e}")
+
+
+def extract_text(response):
+    """The text of the first candidate, or an error naming what came back."""
+    try:
+        cand = response["candidates"][0]
+    except (KeyError, IndexError, TypeError):
+        block = response.get("promptFeedback", {}).get("blockReason") if isinstance(response, dict) else None
+        sys.exit(f"outbox: Gemini returned no candidate" + (f" (blocked: {block})" if block else ""))
+    parts = cand.get("content", {}).get("parts", [])
+    text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
+    if not text.strip():
+        sys.exit(f"outbox: empty rewrite (finishReason={cand.get('finishReason')})")
+    if cand.get("finishReason") not in (None, "STOP"):
+        print(f"outbox: finishReason={cand['finishReason']}, the rewrite may be cut short", file=sys.stderr)
+    return text
+
+
+def split_changes(text):
+    """(rewrite, changes). changes is None when the model wrote no separator."""
+    m = re.search(r"^[ \t]*" + re.escape(SEPARATOR) + r"[ \t]*$", text, re.M)
+    if not m:
+        return text.strip(), None
+    return text[: m.start()].strip(), text[m.end():].strip()
+
+
+def post_check(rewrite):
+    """Warnings for habits the rewrite was asked to drop. Never edits the text."""
+    n = rewrite.count("—")
+    if n:
+        return [f"{n} em dash{'es' if n > 1 else ''} left in"]
+    return []
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="outbox", description=__doc__.split("\n\n")[0])
+    ap.add_argument("file", nargs="?", help="draft to rewrite (default: stdin)")
+    ap.add_argument("--for", dest="audience", type=audience_arg, default="engineer",
+                    metavar="AUDIENCE",
+                    help="who reads the result: one of " + ", ".join(AUDIENCES)
+                         + " (default: engineer), or a quoted phrase describing the "
+                         "reader, which replaces the named note")
+    ap.add_argument("--model", default=os.environ.get("OUTBOX_MODEL", DEFAULT_MODEL),
+                    help=f"Gemini model id (default: {DEFAULT_MODEL}, or $OUTBOX_MODEL)")
+    ap.add_argument("--voice", metavar="FILE",
+                    help=f"samples of your own writing to match (default: {VOICEFILE} if present)")
+    ap.add_argument("--no-voice", action="store_true", help="ignore the default voice file")
+    ap.add_argument("--instruction", action="append", metavar="TEXT",
+                    help="an extra rule for this call, repeatable. Appended to the "
+                         "system prompt as a rule to obey, never as prose to imitate "
+                         "(which is what --voice would make it). For a caller that "
+                         "knows something about the context the text lands in")
+    ap.add_argument("--thinking", choices=("minimal", "low", "medium", "high"), default="high",
+                    help="Gemini thinking level (default high; not every model supports every level)")
+    ap.add_argument("--temperature", type=float, default=1.0,
+                    help="Gemini 3 docs advise keeping the default 1.0 (default 1.0)")
+    ap.add_argument("--timeout", type=int, default=120, help="seconds per request (default 120)")
+    ap.add_argument("--show-prompt", action="store_true",
+                    help="print the system instruction that would be sent, then exit")
+    args = ap.parse_args(argv)
+
+    voice = None
+    if not args.no_voice:
+        path = args.voice or (VOICEFILE if os.path.exists(VOICEFILE) else None)
+        if path:
+            with open(path) as f:
+                voice = f.read()
+    system = build_system(args.audience, voice, args.instruction)
+    if args.show_prompt:
+        print(system)
+        return 0
+
+    draft = open(args.file).read() if args.file else sys.stdin.read()
+    if not draft.strip():
+        sys.exit("outbox: the draft is empty")
+
+    response = call(args.model, request_body(system, draft, args.temperature, args.thinking), read_key(), args.timeout)
+    rewrite, changes = split_changes(extract_text(response))
+    print(rewrite)
+    if changes:
+        print("\nchanges:\n" + changes, file=sys.stderr)
+    else:
+        print("\noutbox: the model listed no changes", file=sys.stderr)
+    for w in post_check(rewrite):
+        print(f"outbox: warning: {w}", file=sys.stderr)
+    usage = response.get("usageMetadata", {})
+    if usage:
+        served = response.get("modelVersion")
+        model = f"{args.model} served by {served}" if served and served != args.model else args.model
+        print(f"outbox: {model}, {usage.get('promptTokenCount', '?')} in / "
+              f"{usage.get('candidatesTokenCount', '?')} out / "
+              f"{usage.get('thoughtsTokenCount', 0)} thinking tokens", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
