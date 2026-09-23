@@ -62,18 +62,9 @@ Thinking defaults to `high`, the most faithful level in testing (`low` dropped f
 
 ## How the prompt is built
 
-The system instruction is, in order: the audience paragraph, marked as taking precedence on conflict (which settles, for example, the engineer note's "do not shorten" against the rules' preference for deleting); any voice samples; the whole of `rules.md`; any `--instruction` rules.
+The system instruction is, in order: the audience paragraph, marked as taking precedence on conflict (which settles, for example, the engineer note's "do not shorten" against the rules' preference for deleting); any voice samples; the whole of `rules.md`; any `--instruction` rules. The spec's last line ("Output only the rewritten text.") is replaced by the output format: the rewrite, a `--- changes ---` line, then the changed claims and the wording notes.
 
-`rules.md` began as the "Claudish to English" spec (github.com/programasweights/claudish, MIT, `specs/claudish-to-english.md`), which is still its backbone and the source of everything distinctive in it: the definition of Claudish, the goal of the smallest set of ordinary propositions, the metaphor glossary, the same-language rule, and "Preserve logical scope exactly" ("required" does not become "sufficient", "not tested" does not become "wrong"). It is not verbatim: rules from other sources are folded into the sections they belong to.
-
-- vomit (github.com/zachahn/vomit, GPL-3.0): giving actions to people, the em-dash rule, the self-praise line.
-- The `humanizer` skill (github.com/blader/humanizer, MIT, derived from Wikipedia's "Signs of AI writing"): chat artifacts and servility, signposting, copula avoidance, synonym cycling, false ranges, rule-of-three padding, speculative filler, the formatting tells, compound hyphenation, keeping the input's "I", and what to leave alone: specific detail, unresolved tension, asides and varied sentence length are the writing working, not tells.
-- A fact guard against inventing a number or a cause the source never gave, after bmurphy1976's deslop skill (a GitHub gist with no license: credited, its text not reproduced) and the "NEVER TOUCH" clause of the SimpleEnglish STE prompt (github.com/AminBlg/SimpleEnglish, MIT).
-- Written for outbox: keeping each action at its stated status (proposed, decided, built, deployed, done), keeping both branches of an alternative, naming linked items in the draft's own words, and never renaming an identifier.
-
-The spec's last line ("Output only the rewritten text.") is replaced by the output format: the rewrite, a `--- changes ---` line, then the changed claims and the wording notes.
-
-The `engineer`, `team` and `manager` notes recast nobuzz's colleague, manager and director modes (github.com/adnanakil/nobuzz, MIT) to open with the reader. `funder` and `participant` have no source prompt; each carries one sample passage in its register.
+`rules.md` began as an outside spec and keeps that spec's structure as its backbone, with rules from several other sources folded into the sections they belong to, alongside a few rules and audience notes written for outbox itself; none of it is reproduced verbatim. Every source, its license, and exactly what it contributed are in `THIRD-PARTY-NOTICES.md`.
 
 ## Development
 
@@ -85,4 +76,4 @@ The tests run offline against scripted responses. `rules.md`, the audience notes
 
 ## License
 
-AGPL-3.0, in `LICENSE`. `rules.md` and the audience notes carry text from four MIT-licensed projects and one GPL-3.0-licensed project; their notices are in `THIRD-PARTY-NOTICES.md`. The deslop gist has no license, so it is credited above without a notice entry.
+AGPL-3.0, in `LICENSE`. `rules.md` and the audience notes carry text from four MIT-licensed projects and one GPL-3.0-licensed project; their notices are in `THIRD-PARTY-NOTICES.md`. The deslop gist has no license, so it is credited there without a notice entry.

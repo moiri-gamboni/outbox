@@ -4,7 +4,7 @@
 
 ## claudish (github.com/programasweights/claudish)
 
-The "Claudish to English" spec (`specs/claudish-to-english.md`) is the backbone of `rules.md`.
+The "Claudish to English" spec (`specs/claudish-to-english.md`) is the backbone of `rules.md` and the source of everything distinctive in it: the definition of Claudish, the goal of the smallest set of ordinary propositions, the metaphor glossary, the same-language rule, and "Preserve logical scope exactly" ("required" does not become "sufficient", "not tested" does not become "wrong"). It is not reproduced verbatim: rules from the other sources below are folded into the sections it defines.
 
 ```
 MIT License
@@ -32,7 +32,7 @@ SOFTWARE.
 
 ## humanizer (github.com/blader/humanizer)
 
-The rules on chat artifacts, signposting, synonym cycling, false ranges, padded lists, speculative filler, the formatting tells, hyphenation, person, and what to leave alone come from the `humanizer` skill, itself derived from Wikipedia's "Signs of AI writing".
+The rules on chat artifacts and servility, signposting, copula avoidance, synonym cycling, false ranges, rule-of-three padding, speculative filler, the formatting tells, compound hyphenation, keeping the input's "I", and what to leave alone (specific detail, unresolved tension, asides and varied sentence length are the writing working, not tells) come from the `humanizer` skill, itself derived from Wikipedia's "Signs of AI writing".
 
 ```
 MIT License
@@ -60,7 +60,7 @@ SOFTWARE.
 
 ## nobuzz (github.com/adnanakil/nobuzz)
 
-The `engineer`, `team` and `manager` audience notes recast nobuzz's colleague, manager and director modes (`debuzz/SKILL.md`), recast to open with the reader instead of the tool's own framing; the manager note otherwise keeps nobuzz's rules.
+The `engineer`, `team` and `manager` audience notes recast nobuzz's colleague, manager and director modes (`debuzz/SKILL.md`), recast to open with the reader instead of the tool's own framing; the manager note otherwise keeps nobuzz's rules. `funder` and `participant` carry no source prompt: both are written for outbox, each anchored by one sample passage in its register.
 
 ```
 MIT License
@@ -88,7 +88,7 @@ SOFTWARE.
 
 ## SimpleEnglish (github.com/AminBlg/SimpleEnglish)
 
-The fact guard in `rules.md` ("a sentence that cannot be reworded without changing what it claims stays as the input wrote it") restates, in `rules.md`'s own wording, the STE system prompt's "NEVER TOUCH" clause against inventing a number or a cause the source never gave.
+The fact guard in `rules.md` ("a sentence that cannot be reworded without changing what it claims stays as the input wrote it") restates, in `rules.md`'s own wording, the STE system prompt's "NEVER TOUCH" clause against inventing a number or a cause the source never gave. The same guard also follows bmurphy1976's deslop skill, a GitHub gist with no license: credited here, its text not reproduced.
 
 ```
 MIT License
@@ -794,3 +794,7 @@ the library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.  But first, please read
 <https://www.gnu.org/licenses/why-not-lgpl.html>.
 ```
+
+## Written for outbox
+
+Some of `rules.md` is not derived from any of the above: keeping each action at its stated status (proposed, decided, built, deployed, done), keeping both branches of an alternative, naming linked items in the draft's own words, and never renaming an identifier.

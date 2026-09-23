@@ -60,8 +60,9 @@ def http_error(code, body=b"", retry_after=None):
 
 
 class PromptObeysItsOwnRules(unittest.TestCase):
-    """The spec is shipped verbatim and is not ours to lint. The text written here
-    (the additions and the audience notes) has to pass the rules it carries."""
+    """`rules.md` is edited, not shipped verbatim, so it is ours to lint along with the
+    text written here (the additions and the audience notes): all of it has to pass the
+    rules it carries."""
 
     def test_no_em_dashes_anywhere(self):
         self.assertNotIn("\u2014", outbox.RULES + "".join(outbox.AUDIENCES.values())

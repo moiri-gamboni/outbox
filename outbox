@@ -40,7 +40,7 @@ SEPARATOR = "--- changes ---"
 # English" spec (github.com/programasweights/claudish, specs/claudish-to-english.md)
 # with a handful of rules from other sources folded into its sections, and the output
 # format (the change list) as its last paragraph. Provenance and the list of edits to
-# the spec: README.md.
+# the spec: THIRD-PARTY-NOTICES.md.
 RULES_FILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "rules.md")
 
 with open(RULES_FILE) as _f:
