@@ -46,9 +46,9 @@ RULES_FILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "rules.md
 with open(RULES_FILE) as _f:
     RULES = _f.read().rstrip()
 
-# nobuzz's colleague and manager modes (github.com/adnanakil/nobuzz, debuzz/SKILL.md),
-# both recast to open with the reader; the manager text drops its one-third length
-# target, since this reader wants the operational detail. The last two have no source
+# nobuzz's colleague, manager and director modes (github.com/adnanakil/nobuzz,
+# debuzz/SKILL.md), recast to open with the reader as engineer, team and manager;
+# team keeps the manager mode's one-third length target. The last two have no source
 # prompt: the funder register is a research-impact report's, the participant
 # register is a programme welcome email's.
 AUDIENCES = {

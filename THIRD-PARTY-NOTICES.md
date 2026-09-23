@@ -1,6 +1,6 @@
 # Third-party notices
 
-`rules.md` carries text derived from four MIT-licensed projects and one GPL-3.0-licensed project. Their notices follow; the rest of this repository is under the AGPL-3.0 in `LICENSE`.
+`rules.md` and the audience notes in `outbox` carry text derived from four MIT-licensed projects and one GPL-3.0-licensed project. Their notices follow; the rest of this repository is under the AGPL-3.0 in `LICENSE`.
 
 ## claudish (github.com/programasweights/claudish)
 
@@ -60,7 +60,7 @@ SOFTWARE.
 
 ## nobuzz (github.com/adnanakil/nobuzz)
 
-The `engineer`, `team` and `manager` audience notes recast nobuzz's colleague, manager and director modes (`debuzz/SKILL.md`) for a reader who opens with the reader instead of the tool's own framing; the manager note otherwise keeps nobuzz's rules.
+The `engineer`, `team` and `manager` audience notes recast nobuzz's colleague, manager and director modes (`debuzz/SKILL.md`), recast to open with the reader instead of the tool's own framing; the manager note otherwise keeps nobuzz's rules.
 
 ```
 MIT License
