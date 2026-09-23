@@ -1,6 +1,6 @@
 ---
 name: outbox
-description: Run a text drafted in this session for other people (an email, a doc, a message, an announcement) through the `outbox` CLI, which has a Gemini model rewrite it in plain English and list its changes. Use when the user asks to "make this plain", "say it like a person", "de-claude this", "run it through outbox", asks for a version for the team, a manager, a funder, hackathon participants, or a reader they name ("for Sam", "for the post's author"), or wants the Claude habits removed without changing anything else ("just de-claudish it", "polish, don't shorten"), or is about to send something drafted here and wants it to read as their own writing. Not for every reply: only text meant for someone else.
+description: Run a text drafted in this session for other people (an email, a doc, a message, an announcement) through the `outbox` CLI for a plain-English rewrite by a second model. Use when the user asks to "make this plain", "say it like a person", "de-claude this", "run it through outbox", asks for a version for the team, a manager, a funder, hackathon participants, or a reader they name ("for Sam", "for the post's author"), or wants the Claude habits removed without changing anything else ("just de-claudish it", "polish, don't shorten"), or is about to send something drafted here and wants it to read as their own writing. Not for every reply: only text meant for someone else.
 ---
 
 # outbox: a second model edits the draft
