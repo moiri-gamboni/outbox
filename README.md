@@ -1,6 +1,6 @@
 # outbox
 
-outbox takes a text that an AI assistant drafted for other people, such as an email, a doc or an announcement, and has a Gemini model rewrite it in plain English. It prints the rewrite and a list of what it changed. A different model does the editing because a model is bad at spotting its own writing habits: to it, they look normal.
+outbox takes a text that an AI assistant drafted for other people, such as an email, a doc or an announcement, and has a Gemini model rewrite it in plain English. It prints the rewrite and a list of what it changed. A different model does the editing because a model cannot see its own writing habits.
 
 outbox is a command-line tool and a Claude Code plugin. The plugin's skill runs the command on a draft, checks the rewrite against the draft for changed facts, and shows you the rewrite. It is meant for the occasional text that goes to other people, not for every reply.
 
@@ -43,7 +43,7 @@ Stdout is the rewrite and nothing else, so you can paste it as is. Stderr has th
 
 The mistake that matters in any rewrite is a changed fact: a number that changed or appeared, a condition that went missing, a promise the draft never made. Read the whole rewrite against the draft, with the change list beside it.
 
-- Compare with the draft itself, because the change list can miss changes. For example, a rewrite has replaced a model's short name with an official-looking full name without listing it.
+- Compare with the draft itself, because the change list can miss a change, such as a short name expanded to an official-looking full one.
 - Read the rewrite in full. Skimming it through `head`, `tail` or `grep` shows the lines you expected and hides the ones that changed.
 - Do not run outbox on its own output. A second pass can swap a precise word for a vaguer one while reporting that nothing changed. To shorten a rewrite or aim it at someone else, run outbox on the original draft again.
 
@@ -60,13 +60,15 @@ Each name adds a paragraph about the reader to the prompt, ahead of the general 
 
 To write for one particular reader, pass the closest name and describe the reader with `--instruction "The reader is ..."`. The name's rules still apply, and the instruction adds to them. The Claude Code skill does this whenever one of the names is close.
 
-For a reader none of the names fits, pass a description of at least two words instead: `--for "a colleague skimming fifty profiles in one afternoon"`. The description replaces the named paragraph, so what it says about the reader, the style or the length overrides the general rules. Where it says nothing, outbox behaves as with `polish`: the style this reader expects, shorthand spelled out, and the content and structure of the draft kept. So if you want the text shorter, the description has to say so. A single word that is not a name is refused as a likely typo.
+For a reader none of the names fits, pass a description of at least two words instead: `--for "a colleague skimming fifty profiles in one afternoon"`. The description replaces the named paragraph, so what it says about the reader, the style or the length overrides the general rules. Where it says nothing, outbox keeps the draft's content and structure, as `polish` does, but writes in the style the described reader expects and spells out shorthand. So if you want the text shorter, the description has to say so. A single word that is not a name is refused as a likely typo.
 
 ## Model
 
 The default is `gemini-flash-latest`, Google's alias for the newest Flash release, previews included. The usage line names the model that actually answered (`gemini-flash-latest served by ...`), so you see a model change on the first call after it. For reproducible results, pass a fixed model id with `--model` or `$OUTBOX_MODEL`. `gemini-3.1-pro-preview` is the most capable option and `gemini-3.5-flash-lite` the cheapest.
 
-Thinking defaults to `high`, which kept facts best in testing: at `low`, the model dropped facts and invented requests. Temperature stays at 1.0, since Google's Gemini 3 guide warns that lowering it can make output worse. outbox retries a 429 or 5xx response, following `Retry-After`, for up to four attempts in all, then exits and prints the response body.
+Thinking defaults to `high`, because in testing `low` dropped facts and invented requests. Temperature defaults to 1.0, since Google's Gemini 3 guide warns that lowering it can make output worse.
+
+outbox retries a network error or a 429, 500, 502, 503 or 504 response (waiting as long as `Retry-After` asks), up to four attempts in all. After that it exits with the error, or the start of the response body. A response slower than `--timeout` (120 seconds by default) is not retried: outbox exits and says so.
 
 ## How the prompt is built
 
@@ -77,7 +79,7 @@ The prompt Gemini receives has four parts, in this order:
 3. All of `rules.md`, which ends by asking for the output format: the rewrite, a `--- changes ---` line, then the changed claims and notes on the wording.
 4. Any `--instruction` rules.
 
-`rules.md` started from an existing style spec and keeps its structure. Rules from several other sources are added to the sections they fit, along with a few rules and the audience paragraphs written for outbox. None of it is copied word for word. `THIRD-PARTY-NOTICES.md` lists every source, its license and what it contributed.
+`rules.md` is built on the "Claudish to English" spec from the claudish project, with rules from other sources added to the sections they fit. `THIRD-PARTY-NOTICES.md` lists every source, its license and what it contributed.
 
 ## Development
 
@@ -85,7 +87,7 @@ The prompt Gemini receives has four parts, in this order:
 python3 -m unittest discover tests
 ```
 
-The tests run offline against scripted responses. They also check that `rules.md`, the audience paragraphs and the text added to a described reader follow their own rules: the tests fail on an em dash in any of them, or on "not X but Y" phrasing in the audience paragraphs.
+The tests run offline against scripted responses. They also check the prompt's own text: they fail on an em dash in `rules.md`, the audience paragraphs or the text added to a described reader, and on a few fixed contrast phrases ("not just", "rather than") in the paragraphs and that text.
 
 ## License
 

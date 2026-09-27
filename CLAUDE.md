@@ -11,8 +11,8 @@ python3 -m unittest discover tests      # offline, against scripted Gemini respo
 
 ## Conventions
 
-- **Public repo.** No personal, employer or machine names in the tree or in commit messages; a pre-push hook on the clone refuses them.
-- **The prompt follows its own rules.** An edit to `rules.md`, an audience paragraph or the described-reader text must pass the rules it adds to; the tests catch the em dash and "not X but Y" cases.
-- **A call without `--instruction` builds the same prompt as before.** Other tools call outbox with fixed arguments, so a change meant for one caller goes behind a flag.
+- **Public repo.** No personal, employer or machine names in the tree or in commit messages.
+- **The prompt follows its own rules.** An edit to `rules.md`, an audience paragraph or the described-reader text must pass the rules it adds to. The tests catch only em dashes and a few fixed contrast phrases, so read the rest yourself.
+- **`--instruction` adds a block and changes nothing else.** A call without it must build exactly the prompt it built before (`test_no_instruction_leaves_the_prompt_byte_identical`): other tools call outbox with fixed arguments, so a change meant for one caller goes behind a flag.
 - **One home per fact.** Flags and defaults go in `--help`, user-facing behaviour in the README, and how a session should run the tool in the skill. The skill gets a line only if a session would otherwise use the tool wrongly.
-- **Sessions load the installed plugin, not this clone.** After a skill change, push, then `claude plugin update outbox@<marketplace>`; running sessions keep the copy they loaded until restarted.
+- **Sessions load the installed plugin, not this clone.** After a skill change, push if the plugin comes from a git marketplace, then run `claude plugin update outbox@<marketplace>`. Running sessions keep the copy they loaded until restarted.
