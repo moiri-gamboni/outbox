@@ -249,6 +249,15 @@ class Call(unittest.TestCase):
         self.assertIn("HTTP 400", str(cm.exception))
         self.assertIn("bad model", str(cm.exception))
 
+    def test_read_timeout_exits_with_a_message_without_retrying(self):
+        # urllib wraps only send errors in URLError; a slow response raises TimeoutError.
+        http = FakeHTTP([TimeoutError("The read operation timed out"), gemini_response("ok")])
+        with self.assertRaises(SystemExit) as cm:
+            outbox.call("m", {}, "K", 5, urlopen=http)
+        self.assertIn("5 s", str(cm.exception))
+        self.assertIn("--timeout", str(cm.exception))
+        self.assertEqual(len(http.requests), 1)
+
     def test_gives_up_after_four_5xx(self):
         http = FakeHTTP([http_error(503)] * 4)
         with mock.patch.object(outbox.time, "sleep"), self.assertRaises(SystemExit):

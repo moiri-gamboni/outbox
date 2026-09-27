@@ -222,6 +222,10 @@ def call(model, body, key, timeout, urlopen=None):
                 time.sleep(float(ra) if ra.replace(".", "", 1).isdigit() else 2 ** attempt)
                 continue
             sys.exit(f"outbox: HTTP {e.code} from Gemini: {detail}")
+        # A slow response raises TimeoutError, which urllib does not wrap in URLError.
+        # Not retried: a second wait as long as the first rarely ends differently.
+        except TimeoutError:
+            sys.exit(f"outbox: no response from Gemini within {timeout:g} s (--timeout)")
         except urllib.error.URLError as e:
             if attempt < 3:
                 time.sleep(2 ** attempt)
