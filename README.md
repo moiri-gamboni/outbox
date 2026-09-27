@@ -1,12 +1,14 @@
 # outbox
 
-outbox rewrites a text that an AI assistant drafted for other people (an email, a doc, an announcement) in plain English, and lists what it changed. The editor is a Gemini model, because a model edits out its own habits badly: it reads them as normal. outbox is a command, and a Claude Code plugin whose skill runs it on a draft and passes the result on without restyling it; the skill's one edit afterwards puts back a fact the rewrite moved, span for span (step 5 of `skills/outbox/SKILL.md`). It is meant for occasional outward-facing text, not every reply.
+outbox takes a text that an AI assistant drafted for other people, such as an email, a doc or an announcement, and has a Gemini model rewrite it in plain English. It prints the rewrite and a list of what it changed. A different model does the editing because a model is bad at spotting its own writing habits: to it, they look normal.
+
+outbox is a command-line tool and a Claude Code plugin. The plugin's skill runs the command on a draft, checks the rewrite against the draft for changed facts, and shows you the rewrite. It is meant for the occasional text that goes to other people, not for every reply.
 
 ## Install
 
 1. Clone the repository and put `outbox` on your `PATH`: add the clone directory, or symlink `outbox` into a directory already on it. It needs only Python 3's standard library.
 2. Get a Gemini API key at https://aistudio.google.com/apikey and save it to `~/.config/gemini/api-key` with mode 0600, or set `GEMINI_API_KEY`. Use a key of your own: the free tier's daily quota is shared by everything that uses the key.
-3. Optional: put two or three short samples of your own writing in `~/.config/outbox/voice.md`, and the model matches that register. `--voice FILE` reads samples from elsewhere, `--no-voice` skips them.
+3. Optional: put two or three short samples of your own writing in `~/.config/outbox/voice.md`, and the rewrite will match their style. `--voice FILE` reads samples from another file, and `--no-voice` skips them.
 4. For the Claude Code skill, install the plugin, then ask for a plain version of a draft or run `/outbox:outbox [audience] [text]`:
 
    ```
@@ -18,54 +20,64 @@ outbox rewrites a text that an AI assistant drafted for other people (an email, 
 
 ```
 outbox draft.md                       for another engineer (default)
-outbox --for polish draft.md          remove the Claude habits, change nothing else
+outbox --for polish draft.md          remove the AI habits, change nothing else
 outbox --for team draft.md            operational detail, no code
 outbox --for manager draft.md         three to five sentences: outcome, impact, ask
 outbox --for funder draft.md          measured report register
 outbox --for participant draft.md     warm, simple, tells them what to do
-outbox --for "Sam, who runs operations" draft.md
-                                      any phrase describes the reader instead
-cat draft.md | outbox                 stdin works too
-outbox --show-prompt --for funder     print the system instruction, make no request
+outbox --for team --instruction "The reader is Sam, who has not seen the code" draft.md
+                                      a named audience, narrowed to one reader
+outbox --for "a colleague skimming fifty profiles in one afternoon" draft.md
+                                      a reader none of the names fits
+cat draft.md | outbox                 read the draft from stdin
+outbox --show-prompt --for funder     print the prompt without calling Gemini
 ```
 
-Stdout is the rewrite and nothing else, so it can be pasted as is. Stderr carries the model's list of changes, a warning when an em dash survived or the rewrite was cut short, and a usage line with the token counts and the model that served the call.
+Stdout is the rewrite and nothing else, so you can paste it as is. Stderr has the model's list of changes, a warning if an em dash survived or the rewrite was cut short, and a usage line with the token counts and the model that answered.
 
-`--instruction "..."` (repeatable) adds a rule for one call. It is for a caller that knows something about where the text lands that the rules cannot: a value the text will sit beside, a term this reader will not have. A task tracker, for example, can tell it not to restate the status or due date that its row already shows beside the body. The model gets it as a rule to obey, where `--voice` samples are prose to imitate. Without `--instruction`, the prompt has no such block at all.
+`--instruction "..."` adds a rule for one call, and can be given more than once. Use it for what the general rules cannot know: who exactly the reader is, a term they will not recognise, or a detail shown next to the text. For example, a task tracker can tell outbox not to repeat the status and due date that its row already shows. The model follows an instruction as a rule, whereas it only imitates the style of `--voice` samples.
 
-The other options (`--model`, `--thinking`, `--temperature`, `--timeout`) and every default are in `outbox --help`.
+`outbox --help` lists the other options (`--model`, `--thinking`, `--temperature`, `--timeout`) and every default.
 
 ## Check the rewrite before sending
 
-Read the whole rewrite against the draft, with the change list beside it. The failure that matters with any rewriter is a fact that moved: a number that changed or appeared, a condition that went missing, a promise the draft never made. Do not skim it through `head`, `tail` or `grep`; a filter shows the lines you expected and hides the ones that changed.
+The mistake that matters in any rewrite is a changed fact: a number that changed or appeared, a condition that went missing, a promise the draft never made. Read the whole rewrite against the draft, with the change list beside it.
 
-- Compare with the draft, not only the change list, which can miss a change: a funder rewrite has given a draft's shorthand model name an official-looking full name without listing the rename. `rules.md` forbids renaming identifiers, but check them.
-- Do not run outbox on its own output. A second pass is close to idempotent but not exact: it can trade a precise word for a plainer, vaguer one while reporting that no claims changed. To shorten or retarget a rewrite, run outbox on the original draft again.
+- Compare with the draft itself, because the change list can miss changes. For example, a rewrite has replaced a model's short name with an official-looking full name without listing it.
+- Read the rewrite in full. Skimming it through `head`, `tail` or `grep` shows the lines you expected and hides the ones that changed.
+- Do not run outbox on its own output. A second pass can swap a precise word for a vaguer one while reporting that nothing changed. To shorten a rewrite or aim it at someone else, run outbox on the original draft again.
 
 ## Audiences
 
-Each name adds one paragraph ahead of the rules, which wins where the two conflict.
+Each name adds a paragraph about the reader to the prompt, ahead of the general rules. Where the two disagree, the paragraph wins.
 
-- `engineer` (default): another engineer. Style changes only; every fact, number, file path, command and code block stays, and the text shortens only by the filler removed.
-- `polish`: whoever the draft was written for. Wording only: structure, headings, lists and every sentence's content stay, so the result runs about the draft's length.
-- `team`: a teammate who runs programs and operations. Leads with what happened, why it matters and what is needed; keeps every fact, date, name and link; drops code, paths and implementation detail unless one is the point; aims for about a third of the draft's length.
-- `manager`: a manager or director with thirty seconds. Three to five sentences: the outcome, the impact or risk, any decision or ask, with the numbers and link needed to act. No code, paths, lists or headings.
-- `funder`: a program officer who will quote the text. A research-impact report's register: every number says what it counts and over which population, uncertainty and the as-of date are stated once, associations stay associations and detection counts are floors, nulls and caveats stay in, no promotional language, invented jargon or process notes.
-- `participant`: a hackathon participant, often early in their career, reading English as a second language, on a phone. Warm, second person: what this is and what they get, then what to do, with any deadline and link. Short paragraphs, no internal names, greeting and sign-off kept.
-- A particular reader who fits a name: pass the name and describe the reader in an instruction, `--for team --instruction "The reader is Sam, who runs operations and has not seen the code"`. The name's note keeps its rules and the instruction narrows them. The skill does this whenever one of the names is close.
-- A described reader (`--for "a colleague reading fifty profiles in one afternoon"`), for a reader no name fits: the phrase replaces the named note, so whatever it says about the reader, the register or the length outranks the rules. What it leaves unsaid defaults to `polish`: the register this reader expects, shorthand said in ordinary words, every paragraph's content and the draft's structure kept, so a description that wants the text shorter must say so. A single word that is not a name is refused as a misspelling; a description takes at least two.
+- `engineer` (default): another engineer. Only the style changes. Every fact, number, file path, command and code block stays, and the text gets shorter only by the filler removed.
+- `polish`: whoever the draft was written for. Only the wording changes. The structure, headings, lists and the content of every sentence stay, so the result is about as long as the draft.
+- `team`: a teammate who runs programs and operations. It leads with what happened, why it matters and what is needed from them. It keeps every fact, date, name and link, drops code, paths and implementation detail unless one is the point, and aims for about a third of the draft's length.
+- `manager`: a manager or director with thirty seconds to spare. Three to five sentences: the outcome, the impact or risk, and any decision or request, with the numbers and link needed to act. No code, paths, lists or headings.
+- `funder`: a program officer who will quote the text. It reads like a research-impact report: every number says what it counts and in which population, the uncertainty and the as-of date are stated once, associations are not presented as causes, detection counts are given as minimums, and null results and caveats stay in. No promotional language, invented jargon or notes about the process.
+- `participant`: a hackathon participant, often early in their career, often reading English as a second language, on a phone. Warm and addressed to "you": what this is and what they get, then what to do, with any deadline and link. Short paragraphs, no internal names, and the greeting and sign-off are kept.
+
+To write for one particular reader, pass the closest name and describe the reader with `--instruction "The reader is ..."`. The name's rules still apply, and the instruction adds to them. The Claude Code skill does this whenever one of the names is close.
+
+For a reader none of the names fits, pass a description of at least two words instead: `--for "a colleague skimming fifty profiles in one afternoon"`. The description replaces the named paragraph, so what it says about the reader, the style or the length overrides the general rules. Where it says nothing, outbox behaves as with `polish`: the style this reader expects, shorthand spelled out, and the content and structure of the draft kept. So if you want the text shorter, the description has to say so. A single word that is not a name is refused as a likely typo.
 
 ## Model
 
-The default is `gemini-flash-latest`, Google's alias for the newest Flash release, previews included. The usage line names the model that actually served the call (`gemini-flash-latest served by ...`), so a change of model shows on its first run; for a reproducible run, pass a fixed model id with `--model` or `$OUTBOX_MODEL`. `gemini-3.1-pro-preview` is the most capable option, `gemini-3.5-flash-lite` the cheap one.
+The default is `gemini-flash-latest`, Google's alias for the newest Flash release, previews included. The usage line names the model that actually answered (`gemini-flash-latest served by ...`), so you see a model change on the first call after it. For reproducible results, pass a fixed model id with `--model` or `$OUTBOX_MODEL`. `gemini-3.1-pro-preview` is the most capable option and `gemini-3.5-flash-lite` the cheapest.
 
-Thinking defaults to `high`, the most faithful level in testing (`low` dropped facts and invented asks). Temperature stays at 1.0, since Google's Gemini 3 guide warns that lowering it can degrade output. A 429 or 5xx response is retried, honouring `Retry-After`, up to four attempts in all; then outbox exits with the response body.
+Thinking defaults to `high`, which kept facts best in testing: at `low`, the model dropped facts and invented requests. Temperature stays at 1.0, since Google's Gemini 3 guide warns that lowering it can make output worse. outbox retries a 429 or 5xx response, following `Retry-After`, for up to four attempts in all, then exits and prints the response body.
 
 ## How the prompt is built
 
-The system instruction is, in order: the audience paragraph, marked as taking precedence on conflict (which settles, for example, the engineer note's "do not shorten" against the rules' preference for deleting); any voice samples; the whole of `rules.md`; any `--instruction` rules. The spec's last line ("Output only the rewritten text.") is replaced by the output format: the rewrite, a `--- changes ---` line, then the changed claims and the wording notes.
+The prompt Gemini receives has four parts, in this order:
 
-`rules.md` began as an outside spec and keeps that spec's structure as its backbone, with rules from several other sources folded into the sections they belong to, alongside a few rules and audience notes written for outbox itself; none of it is reproduced verbatim. Every source, its license, and exactly what it contributed are in `THIRD-PARTY-NOTICES.md`.
+1. The audience paragraph, marked as taking precedence over the rules. This settles conflicts such as the engineer paragraph's "do not shorten" against the rules' preference for cutting.
+2. Your voice samples, if any.
+3. All of `rules.md`, which ends by asking for the output format: the rewrite, a `--- changes ---` line, then the changed claims and notes on the wording.
+4. Any `--instruction` rules.
+
+`rules.md` started from an existing style spec and keeps its structure. Rules from several other sources are added to the sections they fit, along with a few rules and the audience paragraphs written for outbox. None of it is copied word for word. `THIRD-PARTY-NOTICES.md` lists every source, its license and what it contributed.
 
 ## Development
 
@@ -73,8 +85,8 @@ The system instruction is, in order: the audience paragraph, marked as taking pr
 python3 -m unittest discover tests
 ```
 
-The tests run offline against scripted responses. `rules.md`, the audience notes and the described-reader text must pass the rules they carry: the tests fail on an em dash in any of them or contrast framing in the notes.
+The tests run offline against scripted responses. They also check that `rules.md`, the audience paragraphs and the text added to a described reader follow their own rules: the tests fail on an em dash in any of them, or on "not X but Y" phrasing in the audience paragraphs.
 
 ## License
 
-AGPL-3.0, in `LICENSE`. `rules.md` and the audience notes carry text from four MIT-licensed projects and one GPL-3.0-licensed project; their notices are in `THIRD-PARTY-NOTICES.md`. The deslop gist has no license, so it is credited there without a notice entry.
+AGPL-3.0, in `LICENSE`. `rules.md` and the audience paragraphs include text from four MIT-licensed projects and one GPL-3.0-licensed project, whose notices are in `THIRD-PARTY-NOTICES.md`. One further source, a gist with no license, is credited there without a notice.
