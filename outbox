@@ -3,18 +3,7 @@
 
 The draft comes from a file or stdin. The rewrite goes to stdout, so it can be
 pasted as is. The model's list of changes goes to stderr, so the sender can
-check that no fact moved before sending.
-
-  outbox draft.md                       for another engineer (default)
-  outbox --for polish draft.md          remove the Claude habits, change nothing else
-  outbox --for team draft.md            operational detail, no code
-  outbox --for manager draft.md         three to five sentences: outcome, impact, ask
-  outbox --for funder draft.md          measured report register
-  outbox --for participant draft.md     warm, simple, tells them what to do
-  outbox --for "Sam, who runs operations" draft.md
-                                        any phrase describes the reader instead
-  cat draft.md | outbox --voice me.md   match the register of your own samples
-  outbox --instruction "..." draft.md   one more rule for this call, repeatable
+check that no fact changed before sending. Usage and the audiences: README.md.
 
 Key: ~/.config/gemini/api-key (0600) or $GEMINI_API_KEY. Never on the command line.
 """
@@ -135,7 +124,7 @@ def audience_arg(spec):
         return spec
     raise argparse.ArgumentTypeError(
         f"'{spec}' is not an audience name ({', '.join(AUDIENCES)}). To describe the "
-        "reader instead, write a phrase, in quotes: \"Sam, who runs operations\"")
+        "reader instead, write a phrase, in quotes: \"a colleague skimming fifty profiles\"")
 
 
 def audience_note(spec):
@@ -193,7 +182,7 @@ def build_system(audience, voice, instructions=None):
     return "\n\n".join(parts)
 
 
-def request_body(system, draft, temperature, thinking="low"):
+def request_body(system, draft, temperature, thinking="high"):
     return {
         "systemInstruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": "Input:\n\n" + draft}]}],
@@ -277,7 +266,7 @@ def main(argv=None):
     ap.add_argument("--model", default=os.environ.get("OUTBOX_MODEL", DEFAULT_MODEL),
                     help=f"Gemini model id (default: {DEFAULT_MODEL}, or $OUTBOX_MODEL)")
     ap.add_argument("--voice", metavar="FILE",
-                    help=f"samples of your own writing to match (default: {VOICEFILE} if present)")
+                    help="samples of your own writing to match (default: ~/.config/outbox/voice.md if present)")
     ap.add_argument("--no-voice", action="store_true", help="ignore the default voice file")
     ap.add_argument("--instruction", action="append", metavar="TEXT",
                     help="an extra rule for this call, repeatable: who exactly the "
