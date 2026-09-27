@@ -21,8 +21,7 @@ A draft's author cannot see its own habits, since it reads them as normal; the `
 3. Read both files whole with the Read tool, no offset or limit, and no `head`, `tail`, `grep`, `sed` or `wc` on them: a filter shows the lines you predicted and hides the ones the model changed.
 4. Check the rewrite against the draft, sentence by sentence: every number, date, name, link, identifier, command, code block, condition and commitment is unchanged, and nothing is said that the draft did not say. Compare with the draft itself; the change list has missed changes before.
 5. Fix each discrepancy in `outbox-rewrite.md` with the smallest edit that restores the draft's claim: swap the draft's number, name, date, link, identifier or word back in; delete a clause the draft never said; restore a dropped sentence in the draft's own words. Touch nothing around it, and never a sentence step 4 found accurate. If no edit that small restores the claim (a paragraph whose meaning moved), rerun outbox rather than rewriting the passage yourself.
-6. Reply with the rewrite as it now stands, after one lead line at most ("Rewritten for the team:"), then the change list verbatim under a "Changes" heading, with no summary or comment. If step 5 made fixes, add a "Check" heading with one line per fix quoting the rewrite's words before and after.
-7. Show any stderr warning (a surviving em dash, a rewrite cut short). An em dash is a style residue, not a moved fact: leave it; the user can rerun.
+6. Reply with the rewrite as it now stands, after one lead line at most ("Rewritten for the team:"). The change list and your check stay out of the reply; the user reads them on request, from `outbox-changes.txt` or from you. After the rewrite, one line at most: how many facts step 5 put back, if any, and a rewrite cut short, if stderr warned of one. A surviving em dash is a style residue, not a moved fact: leave it unmentioned; the user can rerun.
 
 ## When the tool fails
 
