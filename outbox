@@ -267,18 +267,19 @@ def main(argv=None):
     ap.add_argument("--for", dest="audience", type=audience_arg, default="engineer",
                     metavar="AUDIENCE",
                     help="who reads the result: one of " + ", ".join(AUDIENCES)
-                         + " (default: engineer), or a quoted phrase describing the "
-                         "reader, which replaces the named note")
+                         + " (default: engineer), or, for a reader no name fits, a "
+                         "quoted phrase describing them, which replaces the named "
+                         "audience")
     ap.add_argument("--model", default=os.environ.get("OUTBOX_MODEL", DEFAULT_MODEL),
                     help=f"Gemini model id (default: {DEFAULT_MODEL}, or $OUTBOX_MODEL)")
     ap.add_argument("--voice", metavar="FILE",
                     help=f"samples of your own writing to match (default: {VOICEFILE} if present)")
     ap.add_argument("--no-voice", action="store_true", help="ignore the default voice file")
     ap.add_argument("--instruction", action="append", metavar="TEXT",
-                    help="an extra rule for this call, repeatable. Appended to the "
-                         "system prompt as a rule to obey, never as prose to imitate "
-                         "(which is what --voice would make it). For a caller that "
-                         "knows something about the context the text lands in")
+                    help="an extra rule for this call, repeatable: who exactly the "
+                         "reader is, a term they will not know, a detail shown next "
+                         "to the text. The model obeys it as a rule, where it only "
+                         "imitates the style of --voice samples")
     ap.add_argument("--thinking", choices=("minimal", "low", "medium", "high"), default="high",
                     help="Gemini thinking level (default high; not every model supports every level)")
     ap.add_argument("--temperature", type=float, default=1.0,
