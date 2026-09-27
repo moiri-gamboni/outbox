@@ -5,23 +5,31 @@ description: Run a text drafted in this session for other people (an email, a do
 
 # outbox: a second model edits the draft
 
-A draft's author cannot see its own habits, since it reads them as normal; the `outbox` CLI has a Gemini model, which has different habits, rewrite the draft. So the draft reaches it untouched and the result reaches the user in its words: do not tidy, trim or paraphrase the draft before the call, and do not restyle the result after it. The one edit allowed afterwards puts back a fact the rewrite moved (step 5).
+You cannot see your own writing habits, because they look normal to you. The `outbox` CLI has a Gemini model, whose habits differ, rewrite the draft instead. So pass the draft exactly as written, without tidying or trimming it first, and pass the rewrite on without restyling it. The only edit you make afterwards is putting back a fact the rewrite changed (step 5).
 
 ## Invocation
 
 `/outbox:outbox [audience] [text]`, both optional.
 
-- **audience**: a name as the first word, or a description of the reader. Names: `engineer` (default; another engineer, everything kept), `polish` (same audience as the draft, wording only, no summarizing), `team` (a teammate running programs or operations; operational detail, no code), `manager` (a manager or director; three to five sentences: outcome, impact, ask), `funder` (a program officer; measured report register), `participant` (a hackathon participant; warm, simple, tells them what to do). Always start from a name: with no reader named, the one matching who the text is for; with a particular reader named ("for Sam", "the post's author and the other programme leads"), the closest name, with what the user said about them in `--instruction "The reader is ..."`: who they are and what they know, in the user's words where given, plus anything said about register or length. An operations lead who has not seen the code is `team` plus that instruction, a manager wanting a short reply is `manager` plus one. Only when none of the six is close does the reader's description go to `--for` as a quoted phrase instead. It replaces the named note and its rules, and the CLI's defaults for it keep the content and structure, so a description that wants the text shorter must say so.
+- **audience**: an audience name as the first word, or a description of the reader. When empty, choose from who the text is for.
 - **text**: when empty, the most recent text you wrote for someone else in this conversation, word for word.
+
+## Choosing the audience
+
+The names are `engineer` (the default: another engineer, everything kept), `polish` (the draft's own readers: wording only, no summarizing), `team` (a teammate running programs or operations: operational detail, no code), `manager` (a manager or director: three to five sentences with the outcome, the impact and the request), `funder` (a program officer: a measured report), and `participant` (a hackathon participant: warm, simple, tells them what to do).
+
+Use a name whenever one is close, even when the user names a particular reader ("for Sam", "for the post's author and the other programme leads"). Pass the closest name with `--for`, and put what the user said about the reader in `--instruction "The reader is ..."`: who they are, what they know, and anything they said about tone or length, in their words where they gave them. An operations lead who has not seen the code is `team` plus such an instruction; a manager who wants a short reply is `manager` plus one.
+
+Only when no name is close, pass the reader's description to `--for` as a quoted phrase. It replaces the named audience and its rules. What the description leaves out defaults to keeping the draft's content and structure, so a description that wants the text shorter must say so.
 
 ## Steps
 
 1. Write the draft to a scratch file with the Write tool (e.g. `outbox-draft.md`), never through shell quoting.
-2. In that directory run `outbox --for <audience> outbox-draft.md > outbox-rewrite.md 2> outbox-changes.txt`, adding any `--instruction "The reader is ..."` (a described reader, when no name fits, in quotes), with a 150-second timeout. Stdout is the rewrite; stderr holds the change list, warnings and any error.
-3. Read both files whole with the Read tool, no offset or limit, and no `head`, `tail`, `grep`, `sed` or `wc` on them: a filter shows the lines you predicted and hides the ones the model changed.
-4. Check the rewrite against the draft, sentence by sentence: every number, date, name, link, identifier, command, code block, condition and commitment is unchanged, and nothing is said that the draft did not say. Compare with the draft itself; the change list has missed changes before.
-5. Fix each discrepancy in `outbox-rewrite.md` with the smallest edit that restores the draft's claim: swap the draft's number, name, date, link, identifier or word back in; delete a clause the draft never said; restore a dropped sentence in the draft's own words. Touch nothing around it, and never a sentence step 4 found accurate. If no edit that small restores the claim (a paragraph whose meaning moved), rerun outbox rather than rewriting the passage yourself.
-6. Reply with the rewrite as it now stands, after one lead line at most ("Rewritten for the team:"). The change list and your check stay out of the reply; the user reads them on request, from `outbox-changes.txt` or from you. After the rewrite, one line at most: how many facts step 5 put back, if any, and a rewrite cut short, if stderr warned of one. A surviving em dash is a style residue, not a moved fact: leave it unmentioned; the user can rerun.
+2. In that directory run `outbox --for <audience> [--instruction "The reader is ..."] outbox-draft.md > outbox-rewrite.md 2> outbox-changes.txt` with a 150-second timeout, quoting a described reader. Stdout is the rewrite; stderr holds the change list, warnings and any error.
+3. Read both files whole with the Read tool, with no offset or limit, and never through `head`, `tail`, `grep`, `sed` or `wc`: a filter shows the lines you expected and hides the ones the model changed.
+4. Check the rewrite against the draft, sentence by sentence: every number, date, name, link, identifier, command, code block, condition and commitment is unchanged, and the rewrite says nothing the draft did not. Compare with the draft itself, because the change list sometimes misses changes.
+5. Fix each discrepancy in `outbox-rewrite.md` with the smallest edit that restores what the draft said: put back the draft's number, name, date, link, identifier or word, delete a clause the draft never said, or restore a dropped sentence in the draft's own words. Leave everything around it alone, including every sentence step 4 found accurate. If a small edit cannot fix it (a paragraph whose meaning changed), rerun outbox instead of rewriting the passage yourself.
+6. Reply with the rewrite as it now stands, after at most one lead line ("Rewritten for the team:"). Leave the change list and your check out of the reply; the user can ask for them, and they are in `outbox-changes.txt`. After the rewrite, add at most one line: how many facts step 5 put back, if any, and whether stderr warned that the rewrite was cut short. Do not mention a surviving em dash: it is a matter of style, not a changed fact, and the user can rerun.
 
 ## When the tool fails
 
