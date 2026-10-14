@@ -493,6 +493,23 @@ class ClaudeMain(unittest.TestCase):
         self.assertEqual(out, "Done — today.\n")
         self.assertIn("1 em dash left in", err)
 
+    def test_the_child_gets_the_telemetry_opt_out_and_the_parent_is_left_alone(self):
+        switches = ("DISABLE_TELEMETRY", "DISABLE_ERROR_REPORTING", "DO_NOT_TRACK",
+                    "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY", "DISABLE_FEEDBACK_COMMAND")
+        with open(os.path.join(HERE, "fixtures", "claude-success.json")) as f:
+            result = mock.Mock(stdout=f.read(), stderr="", returncode=0)
+        # Pre-set to "0" so the test holds whatever the runner's own environment is:
+        # the child must read 1, and the parent must still read 0 afterwards.
+        parent = {name: "0" for name in switches}
+        with mock.patch.dict(os.environ, {**parent, "OUTBOX_TEST_MARKER": "kept"}), \
+                mock.patch("subprocess.run", return_value=result) as run:
+            outbox.call_claude("sonnet", "rules", "draft", "xhigh")
+            env = run.call_args.kwargs["env"]
+            for name in switches:
+                self.assertEqual(env[name], "1", name)
+                self.assertEqual(os.environ[name], "0", f"{name} leaked into the caller's process")
+            self.assertEqual(env["OUTBOX_TEST_MARKER"], "kept")
+
     def test_missing_cli_exits_with_a_message(self):
         with mock.patch("subprocess.run", side_effect=FileNotFoundError("claude missing")):
             with self.assertRaisesRegex(SystemExit, "could not run claude"):

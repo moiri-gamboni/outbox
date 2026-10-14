@@ -26,6 +26,18 @@ VOICEFILE = os.path.expanduser("~/.config/outbox/voice.md")
 DEFAULT_MODEL = "sonnet"
 SEPARATOR = "--- changes ---"
 
+# The caller's Claude Code telemetry opt-out, set on the child's own environment on every
+# call. `--safe-mode` disables "all customizations" and only happens to keep applying the
+# settings file's `env` block, which its help text does not promise: the opt-out must not
+# depend on a future release still applying the settings file.
+TELEMETRY_OPT_OUT = {
+    "DISABLE_TELEMETRY": "1",
+    "DISABLE_ERROR_REPORTING": "1",
+    "DO_NOT_TRACK": "1",
+    "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1",
+    "DISABLE_FEEDBACK_COMMAND": "1",
+}
+
 # The instructions are rules.md next to this script: the programasweights "Claudish to
 # English" spec (github.com/programasweights/claudish, specs/claudish-to-english.md)
 # with a handful of rules from other sources folded into its sections, and the output
@@ -232,7 +244,8 @@ def call_claude(model, system, draft, effort):
     logging.debug("Claude request: %r\n%s", argv, message)
     try:
         completed = subprocess.run(argv, input=message, text=True, capture_output=True,
-                                   cwd=tempfile.gettempdir())
+                                   cwd=tempfile.gettempdir(),
+                                   env={**os.environ, **TELEMETRY_OPT_OUT})
     except OSError as e:
         sys.exit(f"outbox: could not run claude: {e}")
     logging.debug("Claude response (exit %s):\n%s\nstderr:\n%s",
