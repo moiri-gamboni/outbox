@@ -1,11 +1,11 @@
 # CLAUDE.md
 
-`outbox` is one Python script (standard library only) that builds a prompt from an audience paragraph, optional voice samples, `rules.md` and any `--instruction` rules, and sends the draft to Gemini. `skills/outbox/SKILL.md` is how a Claude Code session uses it. README.md is for users; this file is for changing the code.
+`outbox` is one Python script (standard library only) that builds a prompt from an audience paragraph, optional voice samples, `rules.md` and any `--instruction` rules, and sends the draft to Claude through the subscription CLI login by default, or Gemini for `gemini-` model ids. `skills/outbox/SKILL.md` is how a Claude Code session uses it. README.md is for users; this file is for changing the code.
 
 ## Commands
 
 ```
-python3 -m unittest discover tests      # offline, against scripted Gemini responses
+python3 -m unittest discover tests      # offline, against captured Claude and scripted Gemini responses
 ./outbox --show-prompt --for team       # the exact prompt, no request made
 ```
 

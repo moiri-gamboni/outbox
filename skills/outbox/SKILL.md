@@ -1,11 +1,11 @@
 ---
 name: outbox
-description: Run a text drafted in this session for other people (an email, a doc, a message, an announcement) through the `outbox` CLI for a plain-English rewrite by a second model. Use when the user asks to "make this plain", "say it like a person", "de-claude this", "run it through outbox", asks for a version for the team, a manager, a funder, hackathon participants, or a reader they name ("for Sam", "for the post's author"), or wants the Claude habits removed without changing anything else ("just de-claudish it", "polish, don't shorten"), or is about to send something drafted here and wants it to read as their own writing. Not for every reply: only text meant for someone else.
+description: Run a text drafted in this session for other people (an email, a doc, a message, an announcement) through the `outbox` CLI for a plain-English rewrite in a fresh context. Use when the user asks to "make this plain", "say it like a person", "de-claude this", "run it through outbox", asks for a version for the team, a manager, a funder, hackathon participants, or a reader they name ("for Sam", "for the post's author"), or wants the Claude habits removed without changing anything else ("just de-claudish it", "polish, don't shorten"), or is about to send something drafted here and wants it to read as their own writing. Not for every reply: only text meant for someone else.
 ---
 
-# outbox: a second model edits the draft
+# outbox: a fresh context edits the draft
 
-You cannot see your own writing habits, because they look normal to you. The `outbox` CLI has a Gemini model, whose habits differ, rewrite the draft instead. So pass the draft exactly as written, without tidying or trimming it first, and pass the rewrite on without restyling it. The only edit you make afterwards is putting back a fact the rewrite changed (step 5).
+The `outbox` CLI has Claude rewrite the draft in a fresh context holding only the rules, any audience and voice instructions, and the draft, through the CLI subscription login. Pass the draft exactly as written, without tidying or trimming it first, and pass the rewrite on without restyling it. The only edit you make afterwards is putting back a fact the rewrite changed (step 5).
 
 ## Invocation
 
@@ -25,7 +25,7 @@ Only when no name is close, pass the reader's description to `--for` as a quoted
 ## Steps
 
 1. Make a scratch directory with `mktemp -d`, and write the draft to `outbox-draft.md` in it with the Write tool, never through shell quoting.
-2. In that directory run `outbox --for <audience> [--instruction "The reader is ..."] outbox-draft.md > outbox-rewrite.md 2> outbox-changes.txt` with a 600-second timeout, since outbox retries failed requests itself; quote a described reader. Stdout is the rewrite; stderr holds the change list, warnings and any error.
+2. In that directory run `outbox --for <audience> [--instruction "The reader is ..."] outbox-draft.md > outbox-rewrite.md 2> outbox-changes.txt` using the Bash tool's `run_in_background: true`, and wait for its completion notice before reading the files; quote a described reader. Do not set a session-side timeout on the command. Stdout is the rewrite; stderr holds the change list, warnings and any error.
 3. Read both files whole with the Read tool, with no offset or limit, and never through `head`, `tail`, `grep`, `sed` or `wc`: a filter shows the lines you expected and hides the ones the model changed.
 4. Check the rewrite against the draft, sentence by sentence: every number, date, name, link, identifier, command, code block, condition and commitment is unchanged, and the rewrite says nothing the draft did not. Compare with the draft itself, because the change list sometimes misses changes.
 5. Fix each discrepancy in `outbox-rewrite.md` with the smallest edit that restores what the draft said: put back the draft's number, name, date, link, identifier or word, delete a clause the draft never said, or restore a dropped sentence in the draft's own words. Leave everything around it alone, including every sentence step 4 found accurate. If a small edit cannot fix it (a paragraph whose meaning changed), rerun outbox instead of rewriting the passage yourself.
@@ -34,4 +34,4 @@ Only when no name is close, pass the reader's description to `--for` as a quoted
 
 ## When the tool fails
 
-Show the actual error (no key at `~/.config/gemini/api-key`, an HTTP error from Gemini, a network error, no response within the timeout). Offer your own rewrite only if the user asks, clearly labeled as a fallback.
+Show the actual error (the `claude` executable could not run, a non-zero CLI exit, a Claude error result, invalid JSON output, or an empty rewrite; for Gemini, a missing key at `~/.config/gemini/api-key`, an HTTP or network error, or no response within an explicit timeout). Offer your own rewrite only if the user asks, clearly labeled as a fallback.

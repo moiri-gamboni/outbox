@@ -1,13 +1,13 @@
 # outbox
 
-outbox takes a text that an AI assistant drafted for other people, such as an email, a doc or an announcement, and has a Gemini model rewrite it in plain English. It prints the rewrite and a list of what it changed. A different model does the editing because a model cannot see its own writing habits.
+outbox takes a text that an AI assistant drafted for other people, such as an email, a doc or an announcement, and has a Claude model rewrite it in plain English. It prints the rewrite and a list of what it changed. By default, Sonnet edits in a fresh context holding only the rules, any audience and voice instructions, and the draft, through the `claude` CLI subscription login.
 
 outbox is a command-line tool and a Claude Code plugin. The plugin's skill runs the command on a draft, checks the rewrite against the draft for changed facts, and shows you the rewrite. It is meant for the occasional text that goes to other people, not for every reply.
 
 ## Install
 
 1. Clone the repository and put `outbox` on your `PATH`: add the clone directory, or symlink `outbox` into a directory already on it. It needs only Python 3's standard library.
-2. Get a Gemini API key at https://aistudio.google.com/apikey and save it to `~/.config/gemini/api-key` with mode 0600, or set `GEMINI_API_KEY`. Use a key of your own: the free tier's daily quota is shared by everything that uses the key.
+2. Install the `claude` CLI and sign in with your subscription login. The default backend uses that login, with no Anthropic API key. For Gemini instead, get an API key at https://aistudio.google.com/apikey and save it to `~/.config/gemini/api-key` with mode 0600, or set `GEMINI_API_KEY`. Use a key of your own: the free tier's daily quota is shared by everything that uses the key.
 3. Optional: put two or three short samples of your own writing in `~/.config/outbox/voice.md`, and the rewrite will match their style. `--voice FILE` reads samples from another file, and `--no-voice` skips them.
 4. For the Claude Code skill, install the plugin, then ask for a plain version of a draft or run `/outbox:outbox [audience] [text]`:
 
@@ -30,14 +30,14 @@ outbox --for team --instruction "The reader is Sam, who has not seen the code" d
 outbox --for "a colleague skimming fifty profiles in one afternoon" draft.md
                                       a reader none of the names fits
 cat draft.md | outbox                 read the draft from stdin
-outbox --show-prompt --for funder     print the prompt without calling Gemini
+outbox --show-prompt --for funder     print the prompt without calling a model
 ```
 
 Stdout is the rewrite and nothing else, so you can paste it as is. Stderr has the model's list of changes, a warning if an em dash survived or the rewrite was cut short, and a usage line with the token counts and the model that answered.
 
 `--instruction "..."` adds a rule for one call, and can be given more than once. Use it for what the general rules cannot know: who exactly the reader is, a term they will not recognise, or a detail shown next to the text. For example, a task tracker can tell outbox not to repeat the status and due date that its row already shows. The model follows an instruction as a rule, whereas it only imitates the style of `--voice` samples.
 
-`outbox --help` lists the other options (`--model`, `--thinking`, `--temperature`, `--timeout`) and every default.
+`outbox --help` lists the other options (`--model`, `--effort`, `--thinking`, `--temperature`, `--timeout`) and every default.
 
 ## Check the rewrite before sending
 
@@ -64,15 +64,15 @@ For a reader none of the names fits, pass a description of at least two words in
 
 ## Model
 
-The default is `gemini-flash-latest`, Google's alias for the newest Flash release, previews included. The usage line names the model that actually answered (`gemini-flash-latest served by ...`), so you see a model change on the first call after it. For reproducible results, pass a fixed model id with `--model` or `$OUTBOX_MODEL`. `gemini-3.1-pro-preview` is the most capable option and `gemini-3.5-flash-lite` the cheapest.
+The default backend uses Claude through the headless `claude` CLI, with its subscription login. Each call starts a fresh context; safe mode disables customizations such as CLAUDE.md, skills, hooks and MCP servers. The usage line names the model that actually answered. Claude failures exit with an error; outbox adds no retries or fallback model.
 
-Thinking defaults to `high`, because in testing `low` dropped facts and invented requests. Temperature defaults to 1.0, since Google's Gemini 3 guide warns that lowering it can make output worse.
+A model id starting with `gemini-` selects the Gemini HTTP backend. It uses the Gemini key described above and keeps its existing request format and retries: a network error or a 429, 500, 502, 503 or 504 response is retried (waiting as long as `Retry-After` asks), up to four attempts in all. After that it exits with the error, or the start of the response body. A response slower than an explicit `--timeout` is not retried.
 
-outbox retries a network error or a 429, 500, 502, 503 or 504 response (waiting as long as `Retry-After` asks), up to four attempts in all. After that it exits with the error, or the start of the response body. A response slower than `--timeout` (120 seconds by default) is not retried: outbox exits and says so.
+Model calls have no timeout by default. Claude calls always wait for the CLI to finish. See `outbox --help` for model selection, effort, Gemini thinking and temperature, and the optional Gemini timeout.
 
 ## How the prompt is built
 
-The prompt Gemini receives has four parts, in this order:
+The system prompt the model receives has four parts, in this order:
 
 1. The audience paragraph, marked as taking precedence over the rules. This settles conflicts such as the engineer paragraph's "do not shorten" against the rules' preference for cutting.
 2. Your voice samples, if any.
