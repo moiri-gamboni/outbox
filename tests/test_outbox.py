@@ -449,7 +449,7 @@ class ClaudeMain(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(out, "We used the new dashboard to get the team on the same page. The team saved two hours each week.\n")
         self.assertIn("no claims changed", err)
-        self.assertIn("claude-sonnet-5-5, 2 in / 75 out / 0 thinking tokens", err)
+        self.assertIn("claude-sonnet-5-5, 4329 in / 75 out / 0 thinking tokens", err)
         self.assertEqual(call.args[0], ["claude", "-p", "--safe-mode", "--system-prompt",
                          outbox.build_system("engineer", None), "--model", "sonnet",
                          "--effort", "xhigh", "--output-format", "json", "--max-turns", "1",

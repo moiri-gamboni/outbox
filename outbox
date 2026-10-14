@@ -356,7 +356,11 @@ def main(argv=None):
         print(f"outbox: warning: {w}", file=sys.stderr)
     if not gemini:
         for model, usage in response.get("modelUsage", {}).items():
-            print(f"outbox: {model}, {usage.get('inputTokens', '?')} in / "
+            # The CLI counts most of the prompt as cache creation, so "in" adds the
+            # cache figures: inputTokens alone reads 2 for a 4,000-token prompt.
+            prompt = sum(usage.get(k, 0) for k in (
+                "inputTokens", "cacheCreationInputTokens", "cacheReadInputTokens"))
+            print(f"outbox: {model}, {prompt} in / "
                   f"{usage.get('outputTokens', '?')} out / "
                   f"{usage.get('thinkingTokens', 0)} thinking tokens", file=sys.stderr)
         return 0
