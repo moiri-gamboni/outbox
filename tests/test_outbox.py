@@ -41,9 +41,11 @@ class FakeHTTP:
     def __init__(self, outcomes):
         self.outcomes = list(outcomes)
         self.requests = []
+        self.timeouts = []
 
     def __call__(self, req, timeout=None):
         self.requests.append(req)
+        self.timeouts.append(timeout)
         outcome = self.outcomes.pop(0)
         if isinstance(outcome, Exception):
             raise outcome
@@ -304,7 +306,7 @@ class Main(unittest.TestCase):
     def run_main(self, argv, stdin="", response=None):
         http = FakeHTTP([response or gemini_response("Plain text.\n--- changes ---\n- one")])
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "K"}), \
+        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "K", "OUTBOX_MODEL": "gemini-flash-latest"}), \
                 mock.patch.object(outbox, "VOICEFILE", "/nonexistent/voice.md"), \
                 mock.patch.object(outbox.urllib.request, "urlopen", http), \
                 mock.patch.object(sys, "stdin", io.StringIO(stdin)), \
@@ -318,10 +320,20 @@ class Main(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(out, "Plain text.\n")
         self.assertIn("changes:\n- one", err)
-        self.assertIn(outbox.DEFAULT_MODEL, err)
+        self.assertIn("gemini-flash-latest", err)
         body = json.loads(http.requests[0].data)
         self.assertIn("Here's the thing", body["contents"][0]["parts"][0]["text"])
         self.assertIn("competent engineer explaining it to another engineer", body["systemInstruction"]["parts"][0]["text"])
+
+    def test_gemini_defaults_have_no_clock(self):
+        response = io.BytesIO(json.dumps(gemini_response("Plain.")).encode())
+        with mock.patch.object(outbox.urllib.request, "urlopen", return_value=response) as request:
+            outbox.call("gemini-x", {}, "K", None)
+        self.assertIsNone(request.call_args.kwargs["timeout"])
+        _, _, _, http = self.run_main([], stdin="A draft.")
+        self.assertEqual(http.timeouts, [None])
+        config = json.loads(http.requests[0].data)["generationConfig"]
+        self.assertEqual(config, {"temperature": 1.0, "thinkingConfig": {"thinkingLevel": "high"}})
 
     def test_audience_and_model_flags_reach_the_request(self):
         with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False) as f:
@@ -362,7 +374,7 @@ class Main(unittest.TestCase):
     def test_an_unknown_single_word_exits_before_any_request(self):
         http = FakeHTTP([])  # any request would raise IndexError, not SystemExit
         err = io.StringIO()
-        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "K"}), \
+        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "K", "OUTBOX_MODEL": "gemini-flash-latest"}), \
                 mock.patch.object(outbox.urllib.request, "urlopen", http), \
                 mock.patch.object(sys, "stdin", io.StringIO("a draft")), \
                 mock.patch.object(sys, "stderr", err):
@@ -397,7 +409,7 @@ class ServedModel(Main):
         rc, out, err, http = self.run_main(
             [], stdin="a draft",
             response=gemini_response("Plain.\n--- changes ---\n- one", version="gemini-served"))
-        self.assertIn(f"outbox: {outbox.DEFAULT_MODEL} served by gemini-served,", err)
+        self.assertIn("outbox: gemini-flash-latest served by gemini-served,", err)
 
     def test_a_model_serving_itself_is_named_once(self):
         rc, out, err, http = self.run_main(
@@ -411,6 +423,86 @@ class ServedModel(Main):
         self.assertIn("outbox: gemini-z,", err)
         self.assertNotIn("served by", err)
         self.assertNotIn("None", err)
+
+
+class ClaudeMain(unittest.TestCase):
+    def run_main(self, argv=(), envelope=None, returncode=0, stderr="", model="sonnet"):
+        with open(os.path.join(HERE, "fixtures", "claude-success.json")) as f:
+            captured = json.load(f)
+        stdout = json.dumps(captured if envelope is None else envelope)
+        result = mock.Mock(stdout=stdout, stderr=stderr, returncode=returncode)
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.dict(os.environ, {}, clear=True), \
+                mock.patch.object(outbox, "VOICEFILE", "/nonexistent/voice.md"), \
+                mock.patch.object(outbox.urllib.request, "urlopen", side_effect=AssertionError("unexpected HTTP call")), \
+                mock.patch("subprocess.run", return_value=result) as run, \
+                mock.patch.object(sys, "stdin", io.StringIO("A draft.")), \
+                mock.patch.object(sys, "stdout", out), \
+                mock.patch.object(sys, "stderr", err):
+            if model is not None:
+                os.environ["OUTBOX_MODEL"] = model
+            rc = outbox.main(list(argv))
+        return rc, out.getvalue(), err.getvalue(), run.call_args
+
+    def test_capture_rewrites_in_an_isolated_context_without_a_timeout(self):
+        rc, out, err, call = self.run_main()
+        self.assertEqual(rc, 0)
+        self.assertEqual(out, "We used the new dashboard to get the team on the same page. The team saved two hours each week.\n")
+        self.assertIn("no claims changed", err)
+        self.assertIn("claude-sonnet-5-5, 2 in / 75 out / 0 thinking tokens", err)
+        self.assertEqual(call.args[0], ["claude", "-p", "--safe-mode", "--system-prompt",
+                         outbox.build_system("engineer", None), "--model", "sonnet",
+                         "--effort", "xhigh", "--output-format", "json", "--max-turns", "1",
+                         "--disallowed-tools", "*", "--strict-mcp-config", "--no-session-persistence"])
+        self.assertEqual(call.kwargs["input"], "Input:\n\nA draft.")
+        self.assertEqual(call.kwargs["cwd"], tempfile.gettempdir())
+        self.assertNotIn("timeout", call.kwargs)
+
+    def test_unset_model_uses_sonnet(self):
+        _, _, _, call = self.run_main(model=None)
+        argv = call.args[0]
+        self.assertEqual(argv[argv.index("--model") + 1], "sonnet")
+
+    def test_explicit_model_effort_and_instruction(self):
+        _, _, _, call = self.run_main(["--model", "opus", "--effort", "low", "--instruction", "Keep the date."])
+        argv = call.args[0]
+        self.assertEqual(argv[argv.index("--model") + 1], "opus")
+        self.assertEqual(argv[argv.index("--effort") + 1], "low")
+        self.assertEqual(argv[argv.index("--system-prompt") + 1],
+                         outbox.build_system("engineer", None, ["Keep the date."]))
+
+    def test_error_envelope_exits_with_its_message(self):
+        with self.assertRaisesRegex(SystemExit, "request failed"):
+            self.run_main(envelope={"is_error": True, "subtype": "test_error", "result": "request failed"})
+
+    def test_nonzero_exit_preserves_cli_error(self):
+        with self.assertRaisesRegex(SystemExit, "login required"):
+            self.run_main(returncode=1, stderr="login required")
+
+    def test_empty_result_exits(self):
+        with self.assertRaisesRegex(SystemExit, "empty.*success"):
+            self.run_main(envelope={"is_error": False, "subtype": "success", "result": " "})
+
+    def test_malformed_stdout_exits_with_raw_message(self):
+        with mock.patch("json.dumps", return_value="broken output"):
+            with self.assertRaisesRegex(SystemExit, "broken output"):
+                self.run_main()
+
+    def test_post_check_runs_on_claude_rewrites(self):
+        _, out, err, _ = self.run_main(envelope={"result": "Done — today.\n--- changes ---\nno claims changed"})
+        self.assertEqual(out, "Done — today.\n")
+        self.assertIn("1 em dash left in", err)
+
+    def test_missing_cli_exits_with_a_message(self):
+        with mock.patch("subprocess.run", side_effect=FileNotFoundError("claude missing")):
+            with self.assertRaisesRegex(SystemExit, "could not run claude"):
+                outbox.call_claude("sonnet", "rules", "draft", "xhigh")
+
+    def test_backend_specific_flags_are_refused(self):
+        for argv in (["--thinking", "high"], ["--temperature", "1"],
+                     ["--model", "gemini-x", "--effort", "xhigh"]):
+            with self.subTest(argv=argv), self.assertRaises(SystemExit):
+                self.run_main(argv)
 
 
 if __name__ == "__main__":

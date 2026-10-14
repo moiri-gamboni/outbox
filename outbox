@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""outbox: rewrite an AI-drafted text for other people in plain English, using Gemini.
+"""outbox: rewrite an AI-drafted text for other people in plain English, using Claude in a fresh context.
 
 The draft comes from a file or stdin. The rewrite goes to stdout, so it can be
 pasted as is. The model's list of changes goes to stderr, so the sender can
 check that no fact changed before sending. Usage and the audiences: README.md.
 
-Key: ~/.config/gemini/api-key (0600) or $GEMINI_API_KEY. Never on the command line.
+Claude uses the claude CLI subscription login. Gemini models use
+~/.config/gemini/api-key (0600) or $GEMINI_API_KEY.
 """
 import argparse
 import json
+import logging
 import os
 import re
 import sys
+import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -19,10 +23,7 @@ import urllib.request
 API = "https://generativelanguage.googleapis.com/v1beta/models"
 KEYFILE = os.path.expanduser("~/.config/gemini/api-key")
 VOICEFILE = os.path.expanduser("~/.config/outbox/voice.md")
-# The alias Google hot-swaps to each new Flash release, previews included. The
-# usage line on stderr names the model that actually served the call, so a swap
-# shows on the run it first happens.
-DEFAULT_MODEL = "gemini-flash-latest"
+DEFAULT_MODEL = "sonnet"
 SEPARATOR = "--- changes ---"
 
 # The instructions are rules.md next to this script: the programasweights "Claudish to
@@ -222,6 +223,37 @@ def call(model, body, key, timeout, urlopen=None):
             sys.exit(f"outbox: network error: {e}")
 
 
+def call_claude(model, system, draft, effort):
+    argv = ["claude", "-p", "--safe-mode", "--system-prompt", system,
+            "--model", model, "--effort", effort, "--output-format", "json",
+            "--max-turns", "1", "--disallowed-tools", "*", "--strict-mcp-config",
+            "--no-session-persistence"]
+    message = "Input:\n\n" + draft
+    logging.debug("Claude request: %r\n%s", argv, message)
+    try:
+        completed = subprocess.run(argv, input=message, text=True, capture_output=True,
+                                   cwd=tempfile.gettempdir())
+    except OSError as e:
+        sys.exit(f"outbox: could not run claude: {e}")
+    logging.debug("Claude response (exit %s):\n%s\nstderr:\n%s",
+                  completed.returncode, completed.stdout, completed.stderr)
+    try:
+        response = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        sys.exit(f"outbox: {completed.stderr.strip() or completed.stdout.strip() or 'claude returned no JSON output'}")
+    if not isinstance(response, dict):
+        sys.exit(f"outbox: invalid Claude response: {completed.stdout.strip()}")
+    if completed.returncode or response.get("is_error"):
+        detail = (completed.stderr.strip() or response.get("result")
+                  or completed.stdout.strip())
+        sys.exit(f"outbox: {detail}")
+    text = response.get("result")
+    if not isinstance(text, str) or not text.strip():
+        sys.exit(f"outbox: empty rewrite from Claude ({response.get('subtype')}): "
+                 + (completed.stderr.strip() or completed.stdout.strip()))
+    return response
+
+
 def extract_text(response):
     """The text of the first candidate, or an error naming what came back."""
     try:
@@ -264,7 +296,7 @@ def main(argv=None):
                          "quoted phrase describing them, which replaces the named "
                          "audience")
     ap.add_argument("--model", default=os.environ.get("OUTBOX_MODEL", DEFAULT_MODEL),
-                    help=f"Gemini model id (default: {DEFAULT_MODEL}, or $OUTBOX_MODEL)")
+                    help=f"Claude alias or model id; gemini-* selects Gemini (default: {DEFAULT_MODEL}, or $OUTBOX_MODEL)")
     ap.add_argument("--voice", metavar="FILE",
                     help="samples of your own writing to match (default: ~/.config/outbox/voice.md if present)")
     ap.add_argument("--no-voice", action="store_true", help="ignore the default voice file")
@@ -273,14 +305,23 @@ def main(argv=None):
                          "reader is, a term they will not know, a detail shown next "
                          "to the text. The model obeys it as a rule, where it only "
                          "imitates the style of --voice samples")
-    ap.add_argument("--thinking", choices=("minimal", "low", "medium", "high"), default="high",
-                    help="Gemini thinking level (default high; not every model supports every level)")
-    ap.add_argument("--temperature", type=float, default=1.0,
-                    help="Gemini 3 docs advise keeping the default 1.0 (default 1.0)")
-    ap.add_argument("--timeout", type=int, default=120, help="seconds per request (default 120)")
+    ap.add_argument("--thinking", choices=("minimal", "low", "medium", "high"), default=None,
+                    help="Gemini-only thinking level (default high; not every model supports every level)")
+    ap.add_argument("--temperature", type=float, default=None,
+                    help="Gemini-only; Gemini 3 docs advise keeping the default 1.0 (default 1.0)")
+    ap.add_argument("--effort", choices=("low", "medium", "high", "xhigh", "max"),
+                    default=None, help="Claude-only effort (default: xhigh)")
+    ap.add_argument("--timeout", type=int, default=None,
+                    help="Gemini-only seconds per request (default: no timeout)")
     ap.add_argument("--show-prompt", action="store_true",
                     help="print the system instruction that would be sent, then exit")
     args = ap.parse_args(argv)
+
+    gemini = args.model.startswith("gemini-")
+    if gemini and args.effort is not None:
+        sys.exit("outbox: --effort is Claude-only")
+    if not gemini and (args.thinking is not None or args.temperature is not None):
+        sys.exit("outbox: --thinking and --temperature are Gemini-only")
 
     voice = None
     if not args.no_voice:
@@ -297,8 +338,15 @@ def main(argv=None):
     if not draft.strip():
         sys.exit("outbox: the draft is empty")
 
-    response = call(args.model, request_body(system, draft, args.temperature, args.thinking), read_key(), args.timeout)
-    rewrite, changes = split_changes(extract_text(response))
+    if gemini:
+        response = call(args.model, request_body(
+            system, draft, args.temperature if args.temperature is not None else 1.0,
+            args.thinking if args.thinking is not None else "high"), read_key(), args.timeout)
+        text = extract_text(response)
+    else:
+        response = call_claude(args.model, system, draft, args.effort or "xhigh")
+        text = response["result"]
+    rewrite, changes = split_changes(text)
     print(rewrite)
     if changes:
         print("\nchanges:\n" + changes, file=sys.stderr)
@@ -306,6 +354,12 @@ def main(argv=None):
         print("\noutbox: the model listed no changes", file=sys.stderr)
     for w in post_check(rewrite):
         print(f"outbox: warning: {w}", file=sys.stderr)
+    if not gemini:
+        for model, usage in response.get("modelUsage", {}).items():
+            print(f"outbox: {model}, {usage.get('inputTokens', '?')} in / "
+                  f"{usage.get('outputTokens', '?')} out / "
+                  f"{usage.get('thinkingTokens', 0)} thinking tokens", file=sys.stderr)
+        return 0
     usage = response.get("usageMetadata", {})
     if usage:
         served = response.get("modelVersion")
